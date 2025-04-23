@@ -54,7 +54,6 @@ namespace AirClassificator.DatabaseMethods
                             Dictionary<int, string> item = new Dictionary<int, string>();
                             item.Add(reader.GetInt32(0), reader.GetString(1)); // id, air_level_name
                             result.Add(item);
-                            // Убираем item.Clear(), так как это очищает словарь перед добавлением
                         }
                     }
                 }
@@ -77,7 +76,6 @@ namespace AirClassificator.DatabaseMethods
                 using (var connection = new NpgsqlConnection(connectionString))
                 {
                     connection.Open();
-                    // SQL-запрос для получения данных из таблицы KnowledgeItems
                     string query = "SELECT name FROM airlevels WHERE id = " + id.ToString() + ";";
                     using (var command = new NpgsqlCommand(query, connection))
                     using (var reader = command.ExecuteReader())
@@ -106,8 +104,6 @@ namespace AirClassificator.DatabaseMethods
                 using (var connection = new NpgsqlConnection(connectionString))
                 {
                     connection.Open();
-
-                    // Удаляем все записи из description_features_of_levels, связанные с этим уровнем
                     string deleteDescriptionQuery = "DELETE FROM description_features_of_levels WHERE level_id = @id;";
                     using (var command = new NpgsqlCommand(deleteDescriptionQuery, connection))
                     {
@@ -115,7 +111,6 @@ namespace AirClassificator.DatabaseMethods
                         command.ExecuteNonQuery();
                     }
 
-                    // Удаляем все записи из level_to_feature_value_marked, связанные с этим уровнем
                     string deleteMarkedQuery = "DELETE FROM level_to_feature_value_marked WHERE level_id = @id;";
                     using (var command = new NpgsqlCommand(deleteMarkedQuery, connection))
                     {
@@ -123,7 +118,6 @@ namespace AirClassificator.DatabaseMethods
                         command.ExecuteNonQuery();
                     }
 
-                    // Удаляем сам уровень из airlevels
                     string deleteLevelQuery = "DELETE FROM airlevels WHERE id = @id;";
                     using (var command = new NpgsqlCommand(deleteLevelQuery, connection))
                     {
@@ -194,16 +188,12 @@ namespace AirClassificator.DatabaseMethods
                 using (var connection = new NpgsqlConnection(connectionString))
                 {
                     connection.Open();
-
-                    // Получаем все id значений из feature_values для этого свойства
                     List<int> featureValueIds = new List<int>();
                     List<Dictionary<string, string>> featureValues = GetFeatureValues(id);
                     foreach (var value in featureValues)
                     {
                         featureValueIds.Add(int.Parse(value["id"]));
                     }
-
-                    // Удаляем все записи из level_to_feature_value_marked, связанные с этими значениями
                     if (featureValueIds.Count > 0)
                     {
                         string deleteMarkedQuery = "DELETE FROM level_to_feature_value_marked WHERE marked_feature_value_id = ANY(@ids);";
@@ -213,24 +203,18 @@ namespace AirClassificator.DatabaseMethods
                             command.ExecuteNonQuery();
                         }
                     }
-
-                    // Удаляем все записи из feature_values, связанные с этим свойством
                     string deleteValuesQuery = "DELETE FROM feature_values WHERE feature_id = @id;";
                     using (var command = new NpgsqlCommand(deleteValuesQuery, connection))
                     {
                         command.Parameters.AddWithValue("id", id);
                         command.ExecuteNonQuery();
                     }
-
-                    // Удаляем все записи из description_features_of_levels, связанные с этим свойством
                     string deleteDescriptionQuery = "DELETE FROM description_features_of_levels WHERE feature_id = @id;";
                     using (var command = new NpgsqlCommand(deleteDescriptionQuery, connection))
                     {
                         command.Parameters.AddWithValue("id", id);
                         command.ExecuteNonQuery();
                     }
-
-                    // Удаляем само свойство из features
                     string deleteFeatureQuery = "DELETE FROM features WHERE id = @id;";
                     using (var command = new NpgsqlCommand(deleteFeatureQuery, connection))
                     {
@@ -336,16 +320,12 @@ namespace AirClassificator.DatabaseMethods
                 using (var connection = new NpgsqlConnection(connectionString))
                 {
                     connection.Open();
-
-                    // Удаляем записи из level_to_feature_value_marked с этим marked_feature_value_id
                     string deleteMarkedQuery = "DELETE FROM level_to_feature_value_marked WHERE marked_feature_value_id = @valueId;";
                     using (var command = new NpgsqlCommand(deleteMarkedQuery, connection))
                     {
                         command.Parameters.AddWithValue("valueId", valueId);
                         command.ExecuteNonQuery();
                     }
-
-                    // Удаляем само значение из feature_values
                     string query = "DELETE FROM feature_values WHERE feature_id = @featureId AND id = @valueId;";
                     using (var command = new NpgsqlCommand(query, connection))
                     {

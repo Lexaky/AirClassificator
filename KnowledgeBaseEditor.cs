@@ -17,16 +17,16 @@ namespace AirClassificator
         private MainForm mainForm;
         private bool wasWindowsClosed = false;
         KnowledgeDB kdb;
-        private int? selectedFeatureId = null; // Храним ID выбранного свойства
-        private int? selectedLevelId = null; // Храним ID выбранного уровня
-        private int? selectedFeatureIdForLevel = null; // Храним ID выбранного свойства для уровня
+        private int? selectedFeatureId = null;
+        private int? selectedLevelId = null;
+        private int? selectedFeatureIdForLevel = null;
 
         public KnowledgeBaseEditor(MainForm parentForm)
         {
             InitializeComponent();
             this.FormClosed += KnowledgeBaseEditor_FormClosed;
             wasWindowsClosed = false;
-            this.mainForm = parentForm; // Сохраняем ссылку на MainForm
+            this.mainForm = parentForm;
 
             // Заполняю ListBox элементами
             options_list.Items.Add("Уровни загрязнённости воздуха");
@@ -45,7 +45,7 @@ namespace AirClassificator
             // Очищаю правую панель перед обновлением 
             panelDetails.Controls.Clear();
 
-            // В зависимости от выбранного элемента показываем разные данные
+            // В зависимости от выбранного элемента разные данные
             if (options_list.SelectedItem != null)
             {
                 string selectedItem = options_list.SelectedItem.ToString();
@@ -67,12 +67,11 @@ namespace AirClassificator
                         int id = level.Keys.First();
                         string name = level.Values.First();
 
-                        // Сначала добавляем кнопку "Удалить"
                         Button deleteButton = new Button
                         {
                             Text = "Удалить",
                             Location = new Point(10, yPosition), // Кнопка слева
-                            Width = 80 // Фиксируем ширину кнопки
+                            Width = 80
                         };
                         deleteButton.Click += (s, ev) =>
                         {
@@ -227,7 +226,7 @@ namespace AirClassificator
                 }
                 else if (selectedItem == "Возможные значения")
                 {
-                    selectedFeatureId = null; // Сбрасываем выбор
+                    selectedFeatureId = null;
                     DisplayFeaturesList(sender, e);
                 }
                 else if (selectedItem == "Описание свойств уровней")
@@ -243,13 +242,11 @@ namespace AirClassificator
                 }
                 else if (selectedItem == "Проверка полноты знаний")
                 {
-                    // Получаем свойства без значений и уровни без свойств
                     List<Dictionary<int, string>> featuresWithoutValues = kdb.GetFeaturesWithoutValues();
                     List<Dictionary<int, string>> levelsWithoutFeatures = kdb.GetLevelsWithoutFeatures();
 
                     int yPosition = 40;
 
-                    // Если всё заполнено
                     if (featuresWithoutValues.Count == 0 && levelsWithoutFeatures.Count == 0)
                     {
                         Label allFilledLabel = new Label
@@ -263,7 +260,6 @@ namespace AirClassificator
                         return;
                     }
 
-                    // Отображаем свойства без значений
                     if (featuresWithoutValues.Count > 0)
                     {
                         Label featuresLabel = new Label
@@ -292,10 +288,9 @@ namespace AirClassificator
                         }
                     }
 
-                    // Отображаем уровни без свойств
                     if (levelsWithoutFeatures.Count > 0)
                     {
-                        yPosition += 10; // Небольшой отступ перед следующим разделом
+                        yPosition += 10;
                         Label levelsLabel = new Label
                         {
                             Text = "Уровни без свойств:",
@@ -353,18 +348,18 @@ namespace AirClassificator
                 featureLink.Click += (s, ev) =>
                 {
                     selectedFeatureId = (int)featureLink.Tag;
-                    DisplayFeaturesList(sender, e); // Обновляем список свойств
-                    DisplayFeatureValuesAndSettings(sender, e, (int)selectedFeatureId); // Отображаем значения и настройки
+                    DisplayFeaturesList(sender, e);
+                    DisplayFeatureValuesAndSettings(sender, e, (int)selectedFeatureId);
                 };
                 if (selectedFeatureId.HasValue && selectedFeatureId == featureId)
                 {
-                    featureLink.LinkColor = Color.Red; // Выделяем выбранное свойство
+                    featureLink.LinkColor = Color.Red;
                 }
                 panelDetails.Controls.Add(featureLink);
                 yPosition += 20;
             }
 
-            // Если есть выбранное свойство, отображаем его значения и настройки
+            // Если есть выбранное свойство, вывожу его значения и настройки
             if (selectedFeatureId.HasValue)
             {
                 DisplayFeatureValuesAndSettings(sender, e, selectedFeatureId.Value);
@@ -685,7 +680,7 @@ namespace AirClassificator
 
         private void DisplayFeatureValuesForLevel(object sender, EventArgs e, int levelId, int featureId)
         {
-            // Удаляем старые элементы значений, чтобы избежать дублирования
+            // Удаляю старые элементы значений, чтобы избежать дублирования
             var existingLabels = panelDetails.Controls.OfType<Label>().Where(l => l.Text == "Значения свойства:").ToList();
             foreach (var label in existingLabels)
             {
@@ -703,7 +698,7 @@ namespace AirClassificator
             }
 
             // Начальная позиция для значений (справа от уровней, ниже свойств)
-            int xPosition = 200; // Сдвигаем вправо
+            int xPosition = 200; // Сдвиг вправо
             int featureLinkHeight = panelDetails.Controls.OfType<LinkLabel>().Count(l => l.Location.X >= 200) * 30; // Высота всех свойств
             int yPosition = 40 + 30 + featureLinkHeight + 20; // 40 (начало) + 30 (заголовок "Свойства уровня:") + высота свойств + отступ
 
@@ -754,7 +749,7 @@ namespace AirClassificator
                 {
                     Text = displayText,
                     AutoSize = true,
-                    Location = new Point(xPosition + 30, yPosition) // Сдвигаем текст значений чуть правее CheckBox
+                    Location = new Point(xPosition + 30, yPosition) // Сдвиг текста значений чуть правее CheckBox
                 };
                 panelDetails.Controls.Add(valueLabel);
 
@@ -764,7 +759,7 @@ namespace AirClassificator
 
         private void DisplayFeaturesForLevelValues(object sender, EventArgs e, int levelId)
         {
-            // Удаляем старые элементы свойств, чтобы избежать дублирования
+            // Удаляю старые элементы свойств, чтобы избежать дублирования
             var existingLabels = panelDetails.Controls.OfType<Label>().Where(l => l.Text == "Свойства уровня:").ToList();
             foreach (var label in existingLabels)
             {
@@ -839,7 +834,7 @@ namespace AirClassificator
             if (wasWindowsClosed == false)
             {
                 mainForm.Close();
-                Application.Exit(); // Немедленно завершаем процесс
+                Application.Exit(); // Немедленно завершаю процесс
             }
         }
     }

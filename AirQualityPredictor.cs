@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Globalization;
 
 namespace AirClassificator
 {
@@ -26,22 +27,18 @@ namespace AirClassificator
 
         [LoadColumn(5)]
         public float SO2 { get; set; }
+
+        [LoadColumn(6)]
+        public uint Cluster { get; set; }
     }
 
     public class AirQualityPrediction
     {
+        [ColumnName("PredictedLabel")]
+        public uint PredictedLabel { get; set; }
+
         [ColumnName("Score")]
         public float[] Scores { get; set; }
-
-        public uint ClusterId
-        {
-            get
-            {
-                if (Scores == null || Scores.Length == 0)
-                    throw new InvalidOperationException("Scores are not available for prediction.");
-                return (uint)Array.IndexOf(Scores, Scores.Max());
-            }
-        }
     }
 
     public class AirQualityPredictor
@@ -49,8 +46,13 @@ namespace AirClassificator
         private readonly MLContext _mlContext;
         private ITransformer _model;
         private readonly string[] _requiredFeatures = { "Твёрдые микрочастицы диаметром 2.5 мкм", "Твёрдые микрочастицы диаметром 10 мкм", "Озон", "Диоксид азота", "Сернистый газ", "Монооксид углерода" };
-        private readonly string[] _airQualityLevels = { "Высокий уровень загрязнённости воздуха", "Средний уровень загрязнённости воздуха", "Низкий уровень загрязнённости воздуха", "Оптимальное состояние воздуха" };
-        private Dictionary<uint, string> _clusterToLevelMapping;
+        private readonly Dictionary<uint, string> _clusterToLevelMapping = new Dictionary<uint, string>
+        {
+            { 3, "Высокий уровень загрязнённости воздуха" },
+            { 0, "Оптимальное состояние воздуха" },
+            { 1, "Низкий уровень загрязнённости воздуха" },
+            { 2, "Средний уровень загрязнённости воздуха" }
+        };
         private Dictionary<string, float> _maxFeatureValues;
 
         public AirQualityPredictor(string datasetPath)
@@ -66,15 +68,74 @@ namespace AirClassificator
                 throw new FileNotFoundException($"Датасет не найден по пути: {datasetPath}");
             }
 
-            // Загружаем данные
+            // Загрузка данных данные
             var data = _mlContext.Data.LoadFromTextFile<AirQualityData>(
                 path: datasetPath,
                 hasHeader: true,
                 separatorChar: ',',
                 allowQuoting: true);
 
-            // Сохраняем максимальные значения признаков
+            // Анализ данных
             var dataEnumerable = _mlContext.Data.CreateEnumerable<AirQualityData>(data, reuseRowObject: false).ToList();
+            Console.WriteLine($"Total number of records in dataset: {dataEnumerable.Count}");
+
+            // Проверка на пропущенные значения
+            bool hasMissingValues = dataEnumerable.Any(d =>
+                float.IsNaN(d.PM10) || float.IsNaN(d.PM2_5) || float.IsNaN(d.CO) ||
+                float.IsNaN(d.NO2) || float.IsNaN(d.O3) || float.IsNaN(d.SO2));
+            if (hasMissingValues)
+            {
+                Console.WriteLine("Warning: Dataset contains missing values (NaN). Replacing with 0.");
+                dataEnumerable = dataEnumerable.Select(d => new AirQualityData
+                {
+                    PM10 = float.IsNaN(d.PM10) ? 0 : d.PM10,
+                    PM2_5 = float.IsNaN(d.PM2_5) ? 0 : d.PM2_5,
+                    CO = float.IsNaN(d.CO) ? 0 : d.CO,
+                    NO2 = float.IsNaN(d.NO2) ? 0 : d.NO2,
+                    O3 = float.IsNaN(d.O3) ? 0 : d.O3,
+                    SO2 = float.IsNaN(d.SO2) ? 0 : d.SO2,
+                    Cluster = d.Cluster
+                }).ToList();
+                data = _mlContext.Data.LoadFromEnumerable(dataEnumerable);
+            }
+
+            // Объединяем классы 0 и 4 (прошлая реализация с автоназначением меток)
+            //foreach (var item in dataEnumerable)
+            //{
+            //    if (item.Cluster == 4)
+            //    {
+            //        item.Cluster = 0;
+            //    }
+            //}
+            data = _mlContext.Data.LoadFromEnumerable(dataEnumerable);
+
+            // Проверка меток
+            var uniqueClusters = dataEnumerable.Select(d => d.Cluster).Distinct().OrderBy(c => c).ToList();
+            Console.WriteLine($"Unique clusters after merging: {string.Join(", ", uniqueClusters)}");
+            if (uniqueClusters.Any(c => c > 3))
+            {
+                throw new InvalidOperationException($"Found invalid cluster values: {string.Join(", ", uniqueClusters.Where(c => c > 3))}. Expected clusters: 0, 1, 2, 3.");
+            }
+
+            // Вывод распределения классов
+            Console.WriteLine("\nClass distribution in dataset:");
+            var classCounts = dataEnumerable.GroupBy(d => d.Cluster)
+                .Select(g => new { Cluster = g.Key, Count = g.Count() });
+            foreach (var group in classCounts.OrderBy(g => g.Cluster))
+            {
+                Console.WriteLine($"Cluster {group.Cluster}: {group.Count} records");
+            }
+
+            // Вывод диапазонов значений признаков
+            Console.WriteLine("\nFeature ranges in dataset:");
+            Console.WriteLine($"PM10: [{dataEnumerable.Min(d => d.PM10)} - {dataEnumerable.Max(d => d.PM10)}]");
+            Console.WriteLine($"PM2_5: [{dataEnumerable.Min(d => d.PM2_5)} - {dataEnumerable.Max(d => d.PM2_5)}]");
+            Console.WriteLine($"CO: [{dataEnumerable.Min(d => d.CO)} - {dataEnumerable.Max(d => d.CO)}]");
+            Console.WriteLine($"NO2: [{dataEnumerable.Min(d => d.NO2)} - {dataEnumerable.Max(d => d.NO2)}]");
+            Console.WriteLine($"O3: [{dataEnumerable.Min(d => d.O3)} - {dataEnumerable.Max(d => d.O3)}]");
+            Console.WriteLine($"SO2: [{dataEnumerable.Min(d => d.SO2)} - {dataEnumerable.Max(d => d.SO2)}]");
+
+            // Сейв максимальных значений признаков
             _maxFeatureValues = new Dictionary<string, float>
             {
                 { "Твёрдые микрочастицы диаметром 10 мкм", dataEnumerable.Max(d => d.PM10) },
@@ -85,106 +146,135 @@ namespace AirClassificator
                 { "Сернистый газ", dataEnumerable.Max(d => d.SO2) }
             };
 
-            Console.WriteLine("Maximum Feature Values:");
+            Console.WriteLine("\nMaximum Feature Values:");
             foreach (var maxValue in _maxFeatureValues)
             {
                 Console.WriteLine($"{maxValue.Key}: {maxValue.Value}");
             }
 
-            // Создаём пайплайн для кластеризации
+            // Деление данных 60/40 обучающая/тестовая
+            var trainTestSplit = _mlContext.Data.TrainTestSplit(data, testFraction: 0.6);
+            var trainData = trainTestSplit.TrainSet;
+            var testData = trainTestSplit.TestSet;
+
+            var trainDataCount = _mlContext.Data.CreateEnumerable<AirQualityData>(trainData, reuseRowObject: false).Count();
+            var testDataCount = _mlContext.Data.CreateEnumerable<AirQualityData>(testData, reuseRowObject: false).Count();
+            Console.WriteLine($"\nTraining data count: {trainDataCount}");
+            Console.WriteLine($"Test data count: {testDataCount}");
+            if (trainDataCount < 10 || testDataCount < 5)
+            {
+                throw new InvalidOperationException("Not enough data for training and testing. Need at least 10 training records and 5 test records.");
+            }
+
+            // Пайплайн для классификации (SdcaMaximumEntropy)
             var pipeline = _mlContext.Transforms.Concatenate("Features", "PM10", "PM2_5", "CO", "NO2", "O3", "SO2")
                 .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
-                .Append(_mlContext.Clustering.Trainers.KMeans("Features", numberOfClusters: 4));
+                .Append(_mlContext.Transforms.Conversion.MapValueToKey("Label", "Cluster"))
+                .Append(_mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy(labelColumnName: "Label", featureColumnName: "Features"))
+                .Append(_mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel", "PredictedLabel"));
 
-            // Обучаем модель
-            _model = pipeline.Fit(data);
+            // Обучение модели
+            try
+            {
+                _model = pipeline.Fit(trainData);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error while training model: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
+                throw;
+            }
 
-            // После обучения сопоставляем кластеры с уровнями загрязнённости
-            MapClustersToLevels(data);
+            // Оценка качества модели
+            try
+            {
+                var predictions = _model.Transform(testData);
+                var metrics = _mlContext.MulticlassClassification.Evaluate(predictions, labelColumnName: "Label");
+
+                // Метрики качества
+                Console.WriteLine("\nModel Evaluation Metrics:");
+                Console.WriteLine($"MicroAccuracy: {metrics.MicroAccuracy:F3}");
+                Console.WriteLine($"MacroAccuracy: {metrics.MacroAccuracy:F3}");
+                Console.WriteLine($"LogLoss: {metrics.LogLoss:F3}");
+
+                // Confusion Matrix
+                Console.WriteLine("\nConfusion Matrix:");
+                var confusionMatrix = metrics.ConfusionMatrix;
+                Console.WriteLine("True\\Predicted");
+                Console.WriteLine($"    {string.Join(" ", Enumerable.Range(0, confusionMatrix.NumberOfClasses).Select(i => i.ToString().PadLeft(5)))}");
+                for (int i = 0; i < confusionMatrix.NumberOfClasses; i++)
+                {
+                    var row = new double[confusionMatrix.NumberOfClasses];
+                    for (int j = 0; j < confusionMatrix.NumberOfClasses; j++)
+                    {
+                        row[j] = confusionMatrix.GetCountForClassPair(i, j); 
+                    }
+                    Console.WriteLine($"{i.ToString().PadLeft(2)} {string.Join(" ", row.Select(x => x.ToString().PadLeft(5)))}");
+                }
+
+                // Вычисление Precision, Recall и F1-Score для каждого класса
+                Console.WriteLine("\nPer-class Metrics:");
+                for (int i = 0; i < confusionMatrix.NumberOfClasses; i++)
+                {
+                    // True Positives — диагональный элемент
+                    double tp = confusionMatrix.GetCountForClassPair(i, i);
+
+                    // False Positives (FP) — сумма элементов в столбце i, кроме TP
+                    double fp = 0;
+                    for (int k = 0; k < confusionMatrix.NumberOfClasses; k++)
+                    {
+                        if (k != i) fp += confusionMatrix.GetCountForClassPair(k, i);
+                    }
+
+                    // False Negatives (FN) — сумма элементов в строке i, кроме TP
+                    double fn = 0;
+                    for (int k = 0; k < confusionMatrix.NumberOfClasses; k++)
+                    {
+                        if (k != i) fn += confusionMatrix.GetCountForClassPair(i, k);
+                    }
+
+                    // Precision = TP / (TP + FP)
+                    double precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+
+                    // Recall = TP / (TP + FN)
+                    double recall = (tp + fn) > 0 ? tp / (tp + fn) : 0;
+
+                    // F1-Score = 2 * (Precision * Recall) / (Precision + Recall)
+                    double f1Score = (precision + recall) > 0 ? 2 * precision * recall / (precision + recall) : 0;
+
+                    Console.WriteLine($"Class {i} ({_clusterToLevelMapping[(uint)i]}):");
+                    Console.WriteLine($"  Precision: {precision:F3}");
+                    Console.WriteLine($"  Recall: {recall:F3}");
+                    Console.WriteLine($"  F1-Score: {f1Score:F3}");
+                }
+
+                // Сохранение данных с предсказаниями в predicted_data.csv
+                var predictedData = _mlContext.Data.CreateEnumerable<AirQualityDataWithPrediction>(predictions, reuseRowObject: false).ToList();
+                using (var writer = new StreamWriter("predicted_data.csv"))
+                {
+                    writer.WriteLine("PM10,PM2_5,CO,NO2,O3,SO2,TrueCluster,PredictedCluster");
+                    foreach (var pred in predictedData)
+                    {
+                        writer.WriteLine($"{pred.PM10},{pred.PM2_5},{pred.CO},{pred.NO2},{pred.O3},{pred.SO2},{pred.Cluster},{pred.PredictedLabel}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error while evaluating model: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
+                throw;
+            }
         }
 
-        private void MapClustersToLevels(IDataView data)
+        private class AirQualityDataWithPrediction : AirQualityData
         {
-            // Делаем предсказания для всех данных, чтобы получить кластеры
-            var predictionEngine = _mlContext.Model.CreatePredictionEngine<AirQualityData, AirQualityPrediction>(_model);
-            var predictions = _mlContext.Data.CreateEnumerable<AirQualityPrediction>(_model.Transform(data), reuseRowObject: false).ToList();
-            var originalData = _mlContext.Data.CreateEnumerable<AirQualityData>(data, reuseRowObject: false).ToList();
-
-            // Собираем данные по кластерам
-            var clusterData = new Dictionary<uint, List<AirQualityData>>();
-            for (int i = 0; i < predictions.Count; i++)
-            {
-                uint clusterId = predictions[i].ClusterId;
-                if (!clusterData.ContainsKey(clusterId))
-                {
-                    clusterData[clusterId] = new List<AirQualityData>();
-                }
-                clusterData[clusterId].Add(originalData[i]);
-            }
-
-            // Вычисляем средние значения признаков для каждого кластера и выводим информацию
-            var clusterAverages = new Dictionary<uint, float>();
-            Console.WriteLine("\nCluster Analysis:");
-            foreach (var cluster in clusterData)
-            {
-                uint clusterId = cluster.Key;
-                var clusterPoints = cluster.Value;
-
-                // Вычисляем средние значения для каждого признака
-                float avgPM10 = clusterPoints.Average(d => d.PM10);
-                float avgPM2_5 = clusterPoints.Average(d => d.PM2_5);
-                float avgCO = clusterPoints.Average(d => d.CO);
-                float avgNO2 = clusterPoints.Average(d => d.NO2);
-                float avgO3 = clusterPoints.Average(d => d.O3);
-                float avgSO2 = clusterPoints.Average(d => d.SO2);
-
-                // Суммируем средние значения всех признаков для оценки "загрязнённости"
-                float totalPollution = avgPM10 + avgPM2_5 + avgCO + avgNO2 + avgO3 + avgSO2;
-                clusterAverages[clusterId] = totalPollution;
-
-                // Выводим информацию о кластере
-                Console.WriteLine($"\nCluster {clusterId}:");
-                Console.WriteLine($"Number of points: {clusterPoints.Count}");
-                Console.WriteLine($"Average PM10: {avgPM10:F2}");
-                Console.WriteLine($"Average PM2_5: {avgPM2_5:F2}");
-                Console.WriteLine($"Average CO: {avgCO:F2}");
-                Console.WriteLine($"Average NO2: {avgNO2:F2}");
-                Console.WriteLine($"Average O3: {avgO3:F2}");
-                Console.WriteLine($"Average SO2: {avgSO2:F2}");
-                Console.WriteLine($"Total Pollution Score: {totalPollution:F2}");
-            }
-
-            // Сортируем кластеры по среднему уровню загрязнённости (от большего к меньшему)
-            var sortedClusters = clusterAverages.OrderByDescending(kv => kv.Value).Select(kv => kv.Key).ToList();
-
-            // Сопоставляем кластеры с уровнями загрязнённости
-            _clusterToLevelMapping = new Dictionary<uint, string>();
-
-            // Убедимся, что все кластеры от 0 до 3 имеют сопоставление
-            for (uint i = 0; i < 4; i++)
-            {
-                int levelIndex = sortedClusters.IndexOf(i);
-                if (levelIndex >= 0)
-                {
-                    _clusterToLevelMapping[i] = _airQualityLevels[levelIndex];
-                }
-                else
-                {
-                    _clusterToLevelMapping[i] = _airQualityLevels[_airQualityLevels.Length - 1]; // "Оптимальное состояние воздуха"
-                }
-            }
-
-            // Выводим сопоставление кластеров с уровнями загрязнённости
-            Console.WriteLine("\nCluster to Level Mapping:");
-            foreach (var mapping in _clusterToLevelMapping)
-            {
-                Console.WriteLine($"Cluster {mapping.Key} -> {mapping.Value}");
-            }
+            public uint PredictedLabel { get; set; }
         }
 
         public string Predict(Dictionary<string, float?> inputFeatures)
         {
-            // Проверяем, есть ли экстремально большие значения
+            // Есть ли экстремально большие значения
             bool isExtreme = false;
             foreach (var feature in inputFeatures)
             {
@@ -205,13 +295,13 @@ namespace AirClassificator
                 return "Высокий уровень загрязнённости воздуха";
             }
 
-            // Ограничиваем входные значения максимальными значениями из датасета
+            // Ограничиваю входные значения максимальными значениями из датасета
             var cappedInputFeatures = new Dictionary<string, float?>();
             foreach (var feature in inputFeatures)
             {
                 if (feature.Value.HasValue && _maxFeatureValues.ContainsKey(feature.Key))
                 {
-                    cappedInputFeatures[feature.Key] = Math.Min(feature.Value.Value, _maxFeatureValues[feature.Key]);
+                    cappedInputFeatures[feature.Key] = Math.Min(feature.Value.Value, _maxFeatureValues[feature.Key] * 5);
                 }
                 else
                 {
@@ -219,7 +309,7 @@ namespace AirClassificator
                 }
             }
 
-            // Создаём объект для предсказания
+            // Создаю объект для предсказания
             var predictionInput = new AirQualityData
             {
                 PM10 = cappedInputFeatures.ContainsKey("Твёрдые микрочастицы диаметром 10 мкм") && cappedInputFeatures["Твёрдые микрочастицы диаметром 10 мкм"].HasValue ? cappedInputFeatures["Твёрдые микрочастицы диаметром 10 мкм"].Value : 0f,
@@ -230,25 +320,26 @@ namespace AirClassificator
                 SO2 = cappedInputFeatures.ContainsKey("Сернистый газ") && cappedInputFeatures["Сернистый газ"].HasValue ? cappedInputFeatures["Сернистый газ"].Value : 0f
             };
 
-            // Добавляем отладочный вывод для всех признаков
+            // Для отладки
             Console.WriteLine($"Input Values - PM10: {predictionInput.PM10}, PM2_5: {predictionInput.PM2_5}, CO: {predictionInput.CO}, NO2: {predictionInput.NO2}, O3: {predictionInput.O3}, SO2: {predictionInput.SO2}");
 
-            // Создаём движок предсказания
+            // Движок предсказания
             var predictionEngine = _mlContext.Model.CreatePredictionEngine<AirQualityData, AirQualityPrediction>(_model);
 
-            // Делаем предсказание
+            // Предсказание
             var prediction = predictionEngine.Predict(predictionInput);
 
-            // Выводим отладочную информацию
-            Console.WriteLine($"Predicted Cluster ID: {prediction.ClusterId}");
+            // Вероятности для каждого класса
+            Console.WriteLine($"Prediction Probabilities: {string.Join(", ", prediction.Scores)}");
+            Console.WriteLine($"Predicted Cluster ID: {prediction.PredictedLabel}");
 
-            // Проверяем, есть ли кластер в словаре
-            if (!_clusterToLevelMapping.ContainsKey(prediction.ClusterId))
+            // Есть ли метка в словаре
+            if (!_clusterToLevelMapping.ContainsKey(prediction.PredictedLabel))
             {
-                throw new KeyNotFoundException($"Cluster ID {prediction.ClusterId} not found in mapping. Available clusters: {string.Join(", ", _clusterToLevelMapping.Keys)}");
+                throw new KeyNotFoundException($"Cluster ID {prediction.PredictedLabel} not found in mapping. Available clusters: {string.Join(", ", _clusterToLevelMapping.Keys)}");
             }
 
-            return _clusterToLevelMapping[prediction.ClusterId];
+            return _clusterToLevelMapping[prediction.PredictedLabel];
         }
 
         public bool CanPredict(Dictionary<int, string> inputValues, List<Dictionary<int, string>> features)

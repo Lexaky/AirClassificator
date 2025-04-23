@@ -23,8 +23,8 @@ namespace AirClassificator
         {
             InitializeComponent();
             wasWindowsClosed = false;
-            this.datainputform = parentForm; // Сохраняем ссылку на MainForm
-            this.kdb = new KnowledgeDB(); // Инициализируем kdb
+            this.datainputform = parentForm;
+            this.kdb = new KnowledgeDB();
             InitializeControls();
         }
 
@@ -53,7 +53,6 @@ namespace AirClassificator
             backButton.Click += BackButton_Click;
             this.Controls.Add(backButton);
 
-            // Загружаем уровни при открытии формы
             DisplayLevelsList();
         }
 
@@ -110,7 +109,7 @@ namespace AirClassificator
 
         private void DisplayFeaturesForLevelValues(int levelId)
         {
-            // Удаляем старые элементы свойств, чтобы избежать дублирования
+            // Удаляю старые элементы свойств, чтобы избежать дублирования
             var existingLabels = panelDetails.Controls.OfType<Label>().Where(l => l.Text == "Свойства уровня:").ToList();
             foreach (var label in existingLabels)
             {
@@ -173,7 +172,7 @@ namespace AirClassificator
 
         private void DisplayFeatureValuesForLevel(int levelId, int featureId)
         {
-            // Удаляем старые элементы значений
+            // Удаляю старые элементы значений
             var existingLabels = panelDetails.Controls.OfType<Label>().Where(l => l.Text == "Значения свойства:" || l.Location.X >= 230).ToList();
             foreach (var label in existingLabels)
             {
@@ -197,14 +196,14 @@ namespace AirClassificator
             panelDetails.Controls.Add(valuesLabel);
             yPosition += 20;
 
-            // Фильтруем только доступные значения (те, которые отмечены)
+            // Фильтрую только доступные значения (те, которые отмечены)
             var availableValues = featureValues.Where(value =>
             {
                 int valueId = int.Parse(value["id"]);
                 return markedFeatureValueIds.Contains(valueId);
             }).ToList();
 
-            // Если нет доступных значений, выводим сообщение
+            // Если нет доступных значений, вывожу сообщение
             if (availableValues.Count == 0)
             {
                 Label noValuesLabel = new Label
@@ -218,7 +217,7 @@ namespace AirClassificator
                 return;
             }
 
-            // Отображаем только доступные значения
+            // Отображаю только доступные значения
             foreach (var value in availableValues)
             {
                 int valueId = int.Parse(value["id"]);
@@ -226,7 +225,7 @@ namespace AirClassificator
                     ? $"Числовой: от {value["minvalue"]} до {value["maxvalue"]}"
                     : $"Перечислимый: {value["constantvalue"]}";
 
-                // Отображаем значение
+                // Отображаю значение
                 Label valueLabel = new Label
                 {
                     Text = displayText,
@@ -235,7 +234,7 @@ namespace AirClassificator
                 };
                 panelDetails.Controls.Add(valueLabel);
 
-                // Отображаем зелёную галочку
+                // Отображаю зелёную галочку
                 Label markedLabel = new Label
                 {
                     Text = "✓",
@@ -266,7 +265,7 @@ namespace AirClassificator
             if (wasWindowsClosed == false)
             {
                 datainputform.Close();
-                Application.Exit(); // Немедленно завершаем процесс
+                Application.Exit(); // Немедленно завершаю процесс
             }
         }
     }

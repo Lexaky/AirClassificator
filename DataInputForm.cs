@@ -16,24 +16,25 @@ namespace AirClassificator
         private MainForm mainForm;
         private bool wasWindowsClosed = false;
         private KnowledgeDB kdb;
-        private Dictionary<int, string> inputValues; // Динамическая структура для хранения введённых значений
+        private Dictionary<int, string> inputValues; // для хранения введённых значений
         private ListBox featuresListBox; // Список свойств
         private ListBox valuesListBox; // Список для ввода значений
         private ListBox savedValuesListBox; // Список сохранённых значений
         private ComboBox valueComboBox; // Для перечислимых значений
         private TextBox valueTextBox; // Для числовых значений
         private KnowledgeDBlook kdbLook;
-        private AirQualityPredictor airQualityPredictor; // Добавляем предсказатель
+        private AirQualityPredictor airQualityPredictor; // Добавляю предсказатель (ии)
         public DataInputForm(MainForm parentForm)
         {
             InitializeComponent();
             this.FormClosed += DataInputForm_FormClosed;
             wasWindowsClosed = false;
-            this.mainForm = parentForm; // Сохраняем ссылку на MainForm
+            this.mainForm = parentForm; // Ссылка на MainForm
             kdb = new KnowledgeDB();
-            inputValues = new Dictionary<int, string>(); // Инициализируем словарь для хранения значений
+            inputValues = new Dictionary<int, string>(); // Словарь для хранения значений
             InitializeControls();
-            this.airQualityPredictor = new AirQualityPredictor("C:\\Users\\lesha\\source\\repos\\AirClassificator\\Datasets\\full_air_quality_knn_imputed.csv");
+            //this.airQualityPredictor = new AirQualityPredictor("C:\\Users\\lesha\\source\\repos\\AirClassificator\\Datasets\\full_air_quality_cluster_imputed.csv");
+            this.airQualityPredictor = new AirQualityPredictor("C:\\Users\\lesha\\source\\repos\\AirClassificator\\Datasets\\full_air_quality_clustered.csv");
         }
 
         private void InitializeControls()
@@ -55,7 +56,8 @@ namespace AirClassificator
                 Size = new Size(200, 400),
                 ScrollAlwaysVisible = true,
                 DisplayMember = "Value",
-                ValueMember = "Key"
+                ValueMember = "Key",
+                HorizontalScrollbar = true
             };
             featuresListBox.SelectedIndexChanged += FeaturesListBox_SelectedIndexChanged;
             this.Controls.Add(featuresListBox);
@@ -97,7 +99,8 @@ namespace AirClassificator
             {
                 Location = new Point(490, 40),
                 Size = new Size(200, 400),
-                ScrollAlwaysVisible = true
+                ScrollAlwaysVisible = true,
+                HorizontalScrollbar = true
             };
             this.Controls.Add(savedValuesListBox);
 
@@ -128,7 +131,7 @@ namespace AirClassificator
             determineLevelButton.Click += DetermineLevelButton_Click;
             this.Controls.Add(determineLevelButton);
 
-            // Новая кнопка "Посмотреть ответ ИИ"
+            // Кнопка "Посмотреть ответ ИИ"
             Button aiPredictionButton = new Button
             {
                 Text = "Посмотреть ответ ИИ",
@@ -148,14 +151,14 @@ namespace AirClassificator
                 return;
             }
 
-            // Проверяем, можно ли сделать предсказание
+            // Чекаю, можно ли сделать предсказание
             if (!airQualityPredictor.CanPredict(inputValues, kdb.GetAllFeatures()))
             {
                 MessageBox.Show("Не задано ни одного признака для ИИ!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
-            // Собираем введённые значения в словарь для предсказания
+            // Собираю введённые значения в словарь для предсказания
             var featuresForPrediction = new Dictionary<string, float?>();
             foreach (var feature in kdb.GetAllFeatures())
             {
@@ -163,7 +166,7 @@ namespace AirClassificator
                 string featureName = feature.Values.First();
                 if (inputValues.ContainsKey(featureId) && !string.IsNullOrEmpty(inputValues[featureId]))
                 {
-                    // Проверяем, является ли значение числовым
+                    // Проверяю, является ли значение числовым
                     if (float.TryParse(inputValues[featureId], out float value))
                     {
                         featuresForPrediction[featureName] = value;
@@ -180,7 +183,7 @@ namespace AirClassificator
                 }
             }
 
-            // Делаем предсказание
+            // Делаю предсказание
             try
             {
                 string predictedLevel = airQualityPredictor.Predict(featuresForPrediction);
@@ -236,10 +239,10 @@ namespace AirClassificator
 
             string value = valueTextBox.Text;
 
-            // Сохраняем значение в словарь
+            // Сохраняю значение в словарь
             inputValues[featureId] = value;
 
-            // Обновляем список сохранённых значений
+            // Обновляю список сохранённых значений
             savedValuesListBox.Items.Clear();
             foreach (var feature in featuresListBox.Items.Cast<KeyValuePair<int, string>>())
             {
@@ -261,10 +264,10 @@ namespace AirClassificator
         {
             if (kdbLook == null || kdbLook.IsDisposed)
             {
-                kdbLook = new KnowledgeDBlook(this); // Создаём экземпляр, передаём ссылку на kdb look
+                kdbLook = new KnowledgeDBlook(this);
             }
-            kdbLook.Show(); // Показываем kdbLook
-            this.Hide(); // Закрываем текущую форму
+            kdbLook.Show();
+            this.Hide();
         }
 
         private void DetermineLevelButton_Click(object sender, EventArgs e)
@@ -282,7 +285,7 @@ namespace AirClassificator
             if (wasWindowsClosed == false)
             {
                 mainForm.Close();
-                Application.Exit(); // Немедленно завершаем процесс
+                Application.Exit(); // Немедленно кикаю процесс
             }
         }
     }
